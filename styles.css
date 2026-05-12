@@ -411,14 +411,196 @@ button { cursor: pointer; }
 }
 .reps-value.flash { animation: flash .7s ease-out; transform-origin: right center; }
 
-/* ─── mobile ─────────────────────────────────────────────── */
+/* ── alerting (rep complete, awaiting coach) ── */
+@keyframes alertGlow {
+  0%, 100% {
+    box-shadow:
+      var(--shadow),
+      0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent),
+      0 0 26px -4px color-mix(in oklab, var(--accent) 55%, transparent);
+  }
+  50% {
+    box-shadow:
+      var(--shadow),
+      0 0 0 2px color-mix(in oklab, var(--accent) 75%, transparent),
+      0 0 60px  2px color-mix(in oklab, var(--accent) 70%, transparent);
+  }
+}
+.card.alerting {
+  border-color: color-mix(in oklab, var(--accent) 65%, var(--border));
+  animation: alertGlow 1.05s ease-in-out infinite;
+}
+.card.alerting .time,
+.card.alerting .state { color: var(--accent); }
+.card.alerting .controls .play {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 92%, white) 0%, var(--accent) 100%);
+  color: #0b0c0f;
+  border-color: transparent;
+}
+
+/* ── linear progress bar (mobile) ── */
+.bar {
+  display: none;
+  height: 4px;
+  width: 100%;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transform-origin: left center;
+  transition: width .25s linear;
+  box-shadow: 0 0 10px -2px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+
+/* ── expand toggle (mobile only) ── */
+.expand-toggle {
+  display: none;
+  appearance: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.expand-toggle:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-2); }
+.expand-chev { transition: transform .2s ease; }
+.expand-toggle[aria-expanded="true"] .expand-chev { transform: rotate(180deg); }
+.expand-label-less { display: none; }
+.expand-toggle[aria-expanded="true"] .expand-label-more { display: none; }
+.expand-toggle[aria-expanded="true"] .expand-label-less { display: inline; }
+
+/* ─── mobile lane layout ─────────────────────────────────── */
 @media (max-width: 640px) {
-  .topbar { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
-  .actions { flex-wrap: wrap; }
-  .actions .btn { padding: 8px 11px; font-size: 12.5px; }
+  .topbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .actions { flex-wrap: wrap; gap: 6px; }
+  .actions .btn { padding: 7px 10px; font-size: 12px; }
   .brand .tag { display: none; }
-  .board { padding: 14px; gap: 14px; grid-template-columns: 1fr; }
-  .card { padding: 16px; }
+
+  .board { padding: 10px; gap: 8px; grid-template-columns: 1fr; }
+
+  /* The card becomes a slim row. Children of card-head, dial, controls and
+     reps are unwrapped (display: contents) so we can grid-area them
+     individually into either the compact lane or the expanded panel. */
+  .card {
+    display: grid;
+    grid-template-columns: 12px 1fr auto auto;
+    grid-template-areas:
+      "swatch  name     name     remove"
+      "time    time     reps     play"
+      "bar     bar      bar      bar"
+      "expand  expand   expand   expand"
+      "presets presets  presets  presets"
+      "custom  custom   custom   custom"
+      "reset   reset    reset    reset"
+      "repctrl repctrl  repctrl  repctrl";
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 12px 14px;
+    overflow: hidden;
+  }
+
+  /* unwrap groups so children flow into the grid */
+  .card-head,
+  .ring-wrap,
+  .ring-center,
+  .controls,
+  .reps {
+    display: contents;
+  }
+
+  .swatch    { grid-area: swatch; align-self: center; width: 10px; height: 10px; }
+  .name      { grid-area: name; padding: 4px 6px; font-size: 14.5px; align-self: center; }
+  .remove    { grid-area: remove; align-self: center; width: 28px; height: 28px; }
+  .ring      { display: none; }
+
+  /* readout: time large, state small below */
+  .time {
+    grid-area: time;
+    align-self: center;
+    font-size: 30px;
+    letter-spacing: -0.025em;
+    line-height: 1;
+  }
+  .state {
+    /* hide the standalone "state" text on mobile - the play button label
+       conveys the same info, the alert glow handles the rest */
+    display: none;
+  }
+
+  .bar { display: block; grid-area: bar; }
+
+  /* mobile rep summary shown in the brief row */
+  .reps-value {
+    grid-area: reps;
+    align-self: center;
+    text-align: right;
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  .reps-value::after {
+    content: " reps";
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-left: 3px;
+    letter-spacing: 0.02em;
+  }
+
+  /* play button big and tappable on the right of the brief row */
+  .play {
+    grid-area: play;
+    align-self: center;
+    min-width: 78px;
+    height: 38px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .expand-toggle { display: inline-flex; grid-area: expand; }
+
+  .presets { grid-area: presets; }
+  .custom  { grid-area: custom; }
+
+  .reset {
+    grid-area: reset;
+    width: 100%;
+  }
+
+  /* full rep controls when expanded */
+  .reps-label { display: none; }
+  .reps-controls {
+    grid-area: repctrl;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .reps-controls .iconbtn { width: 34px; height: 34px; }
+
+  /* Collapsed: hide the expanded-only rows */
+  .card:not(.expanded) .presets,
+  .card:not(.expanded) .custom,
+  .card:not(.expanded) .reset,
+  .card:not(.expanded) .reps-controls {
+    display: none;
+  }
+  /* Collapsed: tighten card so multiple fit on screen */
+  .card:not(.expanded) { padding-bottom: 10px; }
+
+  /* Hide the desktop circle glow during alert; keep card glow */
+  .card.running { box-shadow: var(--shadow), 0 0 0 1px color-mix(in oklab, var(--accent) 25%, transparent); }
 }
 
 @media (min-width: 1100px) {

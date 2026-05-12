@@ -22,9 +22,16 @@
   const RING_CIRC        = 565.486; // 2π·90
 
   /* ─── audio engine ─────────────────────────────────────── */
+  /* Two kinds of sound:
+   *   chime()        — one-shot arpeggio (currently unused; kept for future use)
+   *   startAlert(id) — continuous, repeating arpeggio that keeps playing until
+   *                    stopAlert(id) is called. Each student's alert keeps the
+   *                    student's distinct tone so the coach knows who finished.
+   */
   const audio = {
     ctx: null,
     muted: false,
+    alerts: new Map(),     // studentId -> { intervalId }
     unlock() {
       if (!this.ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -33,15 +40,15 @@
       }
       if (this.ctx.state === "suspended") this.ctx.resume();
     },
-    chime(paletteIdx) {
-      if (this.muted || !this.ctx) return;
+    _playArpeggio(paletteIdx) {
+      if (!this.ctx) return;
       const tone = PALETTE[paletteIdx % PALETTE.length];
       const now  = this.ctx.currentTime;
       tone.notes.forEach((freq, i) => {
         const osc  = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const start = now + i * 0.11;
-        const dur   = 0.55;
+        const dur   = 0.85;
         osc.type = tone.wave;
         osc.frequency.setValueAtTime(freq, start);
         gain.gain.setValueAtTime(0, start);
@@ -51,6 +58,36 @@
         osc.start(start);
         osc.stop(start + dur + 0.05);
       });
+    },
+    chime(paletteIdx) {
+      if (this.muted || !this.ctx) return;
+      this._playArpeggio(paletteIdx);
+    },
+    startAlert(id, paletteIdx) {
+      // Always tear down any existing alert on the same id, so calling
+      // startAlert twice can't leak intervals.
+      this.stopAlert(id);
+      if (this.muted || !this.ctx) {
+        // Still register an entry so isAlerting()-style checks could work;
+        // but no audio. Caller still flips visual `alerting` state.
+        this.alerts.set(id, { intervalId: null });
+        return;
+      }
+      this._playArpeggio(paletteIdx);
+      const intervalId = setInterval(() => this._playArpeggio(paletteIdx), 950);
+      this.alerts.set(id, { intervalId });
+    },
+    stopAlert(id) {
+      const a = this.alerts.get(id);
+      if (!a) return;
+      if (a.intervalId) clearInterval(a.intervalId);
+      this.alerts.delete(id);
+    },
+    stopAllAlerts() {
+      for (const a of this.alerts.values()) {
+        if (a.intervalId) clearInterval(a.intervalId);
+      }
+      this.alerts.clear();
     },
   };
 
@@ -143,7 +180,7 @@
     });
 
     // initial display
-    const rt = runtime.get(s.id) || { remainingMs: s.duration * 1000, running: false, lastTickAt: 0 };
+    const rt = runtime.get(s.id) || { remainingMs: s.duration * 1000, running: false, alerting: false, lastTickAt: 0 };
     runtime.set(s.id, rt);
     paint(node, s, rt);
     return node;
@@ -153,11 +190,20 @@
     const ms = rt.remainingMs;
     const total = s.duration * 1000;
     const frac  = total > 0 ? Math.max(0, Math.min(1, ms / total)) : 0;
-    node.querySelector(".time").textContent = fmt(ms);
-    node.querySelector(".state").textContent = rt.running ? "running" : "paused";
-    node.querySelector(".play").textContent  = rt.running ? "Pause"   : "Start";
+
+    let stateText, playText;
+    if (rt.alerting)    { stateText = "rep complete"; playText = "Next rep"; }
+    else if (rt.running){ stateText = "running";      playText = "Pause";    }
+    else                { stateText = "paused";       playText = "Start";    }
+
+    node.querySelector(".time").textContent  = fmt(ms);
+    node.querySelector(".state").textContent = stateText;
+    node.querySelector(".play").textContent  = playText;
     node.querySelector(".ring-fill").style.strokeDashoffset = String(RING_CIRC * (1 - frac));
-    node.classList.toggle("running", rt.running);
+    const bar = node.querySelector(".bar-fill");
+    if (bar) bar.style.width = `${frac * 100}%`;
+    node.classList.toggle("running",  rt.running);
+    node.classList.toggle("alerting", rt.alerting);
   }
 
   /* ─── student CRUD ─────────────────────────────────────── */
@@ -175,6 +221,7 @@
     renderAll();
   }
   function removeStudent(id) {
+    audio.stopAlert(id);
     students = students.filter(s => s.id !== id);
     runtime.delete(id);
     save();
@@ -197,19 +244,19 @@
 
       const node = board.querySelector(`.card[data-id="${s.id}"]`);
       if (rt.remainingMs <= 0) {
-        // fire chime, bump reps, auto-restart
-        audio.chime(s.palette);
+        // Rep complete: bump count, reset display, stop the timer, and start
+        // the continuous alert. Coach must explicitly press the play button
+        // (which routes through toggle()) to start the next rep.
         s.reps += 1;
-        rt.remainingMs = s.duration * 1000 + rt.remainingMs; // carry small overshoot
+        rt.remainingMs = s.duration * 1000;
+        rt.running     = false;
+        rt.alerting    = true;
+        audio.startAlert(s.id, s.palette);
         if (node) {
           node.querySelector(".reps-value").textContent = s.reps;
           node.querySelector(".reps-value").classList.remove("flash");
-          // restart animation
           void node.offsetWidth;
           node.querySelector(".reps-value").classList.add("flash");
-          node.classList.remove("pulse");
-          void node.offsetWidth;
-          node.classList.add("pulse");
         }
         save();
       }
@@ -249,11 +296,19 @@
   function toggle(id) {
     const s  = students.find(x => x.id === id); if (!s) return;
     const rt = runtime.get(id);
-    if (rt.running) {
+    if (rt.alerting) {
+      // Coach acknowledging the chime — silence and begin the next rep.
+      audio.stopAlert(id);
+      audio.unlock();
+      rt.alerting   = false;
+      rt.running    = true;
+      rt.lastTickAt = performance.now();
+      ensureLoop();
+    } else if (rt.running) {
       rt.running = false;
     } else {
       audio.unlock();
-      rt.running = true;
+      rt.running    = true;
       rt.lastTickAt = performance.now();
       ensureLoop();
     }
@@ -263,6 +318,9 @@
   function resetTimer(id) {
     const s  = students.find(x => x.id === id); if (!s) return;
     const rt = runtime.get(id);
+    audio.stopAlert(id);
+    rt.alerting    = false;
+    rt.running     = false;
     rt.remainingMs = s.duration * 1000;
     const node = board.querySelector(`.card[data-id="${id}"]`);
     if (node) paint(node, s, rt);
@@ -286,6 +344,13 @@
   board.addEventListener("click", (e) => {
     const card = e.target.closest(".card"); if (!card) return;
     const id = card.dataset.id;
+    const expandBtn = e.target.closest(".expand-toggle");
+    if (expandBtn) {
+      const next = !card.classList.contains("expanded");
+      card.classList.toggle("expanded", next);
+      expandBtn.setAttribute("aria-expanded", String(next));
+      return;
+    }
     if (e.target.matches(".chip"))         setDuration(id, Number(e.target.dataset.sec));
     else if (e.target.matches(".play"))    toggle(id);
     else if (e.target.matches(".reset"))   resetTimer(id);
@@ -325,6 +390,10 @@
     let any = false;
     for (const s of students) {
       const rt = runtime.get(s.id);
+      if (rt.alerting) {            // acknowledge any pending alerts
+        audio.stopAlert(s.id);
+        rt.alerting = false;
+      }
       if (!rt.running) { rt.running = true; rt.lastTickAt = now; any = true; }
     }
     if (any) {
@@ -337,9 +406,11 @@
   });
 
   pauseAll.addEventListener("click", () => {
+    audio.stopAllAlerts();
     for (const s of students) {
       const rt = runtime.get(s.id);
-      if (rt.running) rt.running = false;
+      rt.running  = false;
+      rt.alerting = false;
     }
     students.forEach(s => {
       const node = board.querySelector(`.card[data-id="${s.id}"]`);
@@ -358,6 +429,7 @@
   muteBtn.addEventListener("click", () => {
     audio.muted = !audio.muted;
     muteBtn.setAttribute("aria-pressed", String(audio.muted));
+    if (audio.muted) audio.stopAllAlerts(); // silence room immediately
     save();
   });
 

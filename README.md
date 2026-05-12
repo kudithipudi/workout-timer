@@ -9,15 +9,15 @@ No build step. No framework. Three files. Open `index.html` in any modern browse
 ## Features
 
 - **Per-student timers** — every student tile runs its own independent countdown
-- **Auto-restart + rep counting** — when a timer hits zero it chimes, increments the rep count, and immediately restarts the same interval
+- **Rep-complete alert flow** — when a timer hits zero it (a) increments the rep count, (b) resets the timer to the full interval, (c) stops counting, and (d) starts a *continuous, repeating* chime in that student's tone. The card pulses with the student's accent color until the coach taps **Next rep**, which silences the chime and starts the next interval. This lets the coach pace each student manually instead of being chained to an auto-restart.
 - **Distinct tones** — each student is auto-assigned a unique three-note WebAudio chime (different fundamentals + waveforms) so the trainer can identify *which* student finished without looking
-- **Distinct colors** — matching accent color per student (ring, glow, swatch) for instant visual ID
+- **Distinct colors** — matching accent color per student (ring, glow, swatch, alert pulse) for instant visual ID
 - **Preset intervals** — one-tap chips for 20s, 30s, 45s, 1m, 1:30, 2m, 3m, 5m
 - **Custom durations** — `mm:ss` input for anything else
 - **Manual rep adjustments** — +/− / zero buttons per student in case the trainer wants to log reps without the timer
-- **Global controls** — Start all · Pause all · Reset reps · Mute
-- **Persistent roster** — the student list, names, intervals, rep counts and mute state are saved to `localStorage` and restored on next load (timers always start paused)
-- **Responsive** — 1 column on phones, fills the screen with as many columns as it can on tablets / desktops
+- **Global controls** — Start all · Pause all · Reset reps · Mute. *Start all* also acknowledges any pending rep-complete alerts and starts the next rep for those students. *Pause all* silences every chime.
+- **Persistent roster** — the student list, names, intervals, rep counts and mute state are saved to `localStorage` and restored on next load (timers always start paused, alerts never restore)
+- **Responsive** — desktop gets a card grid with a big circular ring per student; mobile switches to a slim **lane layout** (one row per student with a thin linear progress bar), so the coach can see ~5–6 students per phone screen without scrolling. Tap the per-card chevron to expand settings/rep-controls inline.
 - **No external dependencies** — system fonts, no Google Fonts, no CDN, no analytics
 
 ---
@@ -76,10 +76,19 @@ students = [
   ...
 ]
 
-runtime  = Map<id, { remainingMs, running, lastTickAt }> // ephemeral
+runtime  = Map<id, { remainingMs, running, alerting, lastTickAt }> // ephemeral
+audio.alerts = Map<id, { intervalId }>                              // ephemeral
 ```
 
-`students` is persisted to `localStorage` under `cadence.v1`. `runtime` lives only for the session — running state never persists, so reloading always leaves you paused.
+`students` is persisted to `localStorage` under `cadence.v1`. `runtime` and `audio.alerts` live only for the session — running and alerting states never persist, so reloading always leaves you paused with no chimes pending.
+
+A card has three mutually-exclusive states:
+
+| `running` | `alerting` | meaning |
+| --- | --- | --- |
+| `false` | `false` | **idle** — paused at some remaining time |
+| `true`  | `false` | **running** — counting down |
+| `false` | `true`  | **alerting** — rep just finished, timer reset to full duration, chime looping until coach taps Next rep |
 
 ### Timer loop
 
@@ -87,14 +96,29 @@ A single `requestAnimationFrame` loop drives every running timer. Each frame:
 
 1. Compute `dt = now - lastTickAt` per running student
 2. Subtract from `remainingMs`
-3. If it crosses zero → fire chime, increment reps, add `duration*1000` back (carrying the overshoot so timers don't drift)
+3. If it crosses zero → `reps += 1`, reset `remainingMs` to full duration, flip `running → false` / `alerting → true`, start the continuous chime via `audio.startAlert(id, palette)`
 4. Repaint just the affected card
 
-When nothing is running, the rAF loop is cancelled — zero CPU when idle.
+When nothing is running, the rAF loop is cancelled — zero CPU when idle. Alerts run on their own `setInterval`s (one per alerting student) and are torn down by `stopAlert(id)` on user acknowledgement.
 
 ### Audio
 
 `AudioContext` is created lazily on first user interaction. Each chime is a short 3-note arpeggio with an ADSR envelope, scheduled on the audio clock for tight timing. Eight tone profiles cycle through the palette — sine + triangle waveforms across pleasant musical intervals (C, A, G, F, D, B, Bb, Ab majors).
+
+For the rep-complete alert, the same arpeggio repeats every 950 ms until acknowledged. Multiple students can be alerting simultaneously; each ringer uses that student's distinct tone, so the coach can tell who's pending by ear.
+
+### Mobile lane layout
+
+On phones, the card switches from a tall column-with-ring to a one-row "lane":
+
+```
+[●] [Name________________________] [×]
+[00:42]                  [12 reps] [▶ Start]
+[========linear progress bar========]
+[      ▼ Adjust interval & reps  ▼ ]
+```
+
+This is implemented by setting `display: grid` on the card with named template areas, and applying `display: contents` to `.card-head`, `.ring-wrap`, `.ring-center`, `.controls` and `.reps` so their children flow into the parent grid. The SVG ring is hidden on mobile; the linear `.bar` takes over. Tapping the chevron toggles a `.expanded` class on the card, which reveals the preset chips, custom-time form, reset button, and rep adjustment controls in additional grid rows.
 
 ### Persistence
 
