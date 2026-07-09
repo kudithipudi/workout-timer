@@ -22,12 +22,13 @@
   const RING_CIRC        = 565.486; // 2π·90
 
   /* ─── audio engine ─────────────────────────────────────── */
-  /* Two kinds of sound:
-   *   chime()        — one-shot arpeggio (currently unused; kept for future use)
-   *   startAlert(id) — continuous, repeating arpeggio that keeps playing until
-   *                    stopAlert(id) is called. Each student's alert keeps the
-   *                    student's distinct tone so the coach knows who finished.
+  /* startAlert(id, paletteIdx, onAutoStop) plays the student's distinct arpeggio
+   * a few times in a row and then stops on its own. The coach can also press
+   * the play button mid-alert to cut it short and start the next rep.
    */
+  const ALERT_CHIMES   = 5;    // total chimes per rep-complete alert
+  const ALERT_INTERVAL = 950;  // ms between chime starts
+
   const audio = {
     ctx: null,
     muted: false,
@@ -63,18 +64,28 @@
       if (this.muted || !this.ctx) return;
       this._playArpeggio(paletteIdx);
     },
-    startAlert(id, paletteIdx) {
+    startAlert(id, paletteIdx, onAutoStop) {
       // Always tear down any existing alert on the same id, so calling
       // startAlert twice can't leak intervals.
       this.stopAlert(id);
-      if (this.muted || !this.ctx) {
-        // Still register an entry so isAlerting()-style checks could work;
-        // but no audio. Caller still flips visual `alerting` state.
-        this.alerts.set(id, { intervalId: null });
-        return;
-      }
-      this._playArpeggio(paletteIdx);
-      const intervalId = setInterval(() => this._playArpeggio(paletteIdx), 950);
+
+      const ring = () => {
+        if (!this.muted && this.ctx) this._playArpeggio(paletteIdx);
+      };
+      ring(); // chime #1 immediately
+
+      let remaining = ALERT_CHIMES - 1;
+      const intervalId = setInterval(() => {
+        ring();
+        remaining -= 1;
+        if (remaining <= 0) {
+          // Natural expiry: clear interval, drop the entry, notify the caller
+          // so it can flip runtime state back to idle.
+          this.stopAlert(id);
+          if (typeof onAutoStop === "function") onAutoStop();
+        }
+      }, ALERT_INTERVAL);
+
       this.alerts.set(id, { intervalId });
     },
     stopAlert(id) {
@@ -244,14 +255,23 @@
 
       const node = board.querySelector(`.card[data-id="${s.id}"]`);
       if (rt.remainingMs <= 0) {
-        // Rep complete: bump count, reset display, stop the timer, and start
-        // the continuous alert. Coach must explicitly press the play button
-        // (which routes through toggle()) to start the next rep.
+        // Rep complete: bump count, reset display, stop the timer, and play a
+        // short burst of chimes. The alert stops on its own after a few
+        // seconds; the coach starts the next rep manually whenever the
+        // student is ready.
         s.reps += 1;
         rt.remainingMs = s.duration * 1000;
         rt.running     = false;
         rt.alerting    = true;
-        audio.startAlert(s.id, s.palette);
+        audio.startAlert(s.id, s.palette, () => {
+          // Natural alert expiry: drop alerting state and repaint so the card
+          // returns to a plain "paused at full duration" idle state.
+          const rt2 = runtime.get(s.id);
+          if (!rt2) return;
+          rt2.alerting = false;
+          const n = board.querySelector(`.card[data-id="${s.id}"]`);
+          if (n) paint(n, s, rt2);
+        });
         if (node) {
           node.querySelector(".reps-value").textContent = s.reps;
           node.querySelector(".reps-value").classList.remove("flash");

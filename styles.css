@@ -47,7 +47,7 @@ button { cursor: pointer; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 24px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 14px calc(24px + env(safe-area-inset-left, 0px));
   background: rgba(11,12,15,.72);
   backdrop-filter: saturate(140%) blur(14px);
   -webkit-backdrop-filter: saturate(140%) blur(14px);
@@ -85,6 +85,34 @@ button { cursor: pointer; }
   align-items: center;
   gap: 8px;
 }
+
+.lab-link {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: none;
+  padding: 9px 4px 9px 10px;
+  border-left: 1px solid var(--border);
+  margin-left: 4px;
+  white-space: nowrap;
+  transition: color .15s ease;
+}
+.lab-link:hover { color: var(--text); }
+
+/* ─── footer ─────────────────────────────────────────────── */
+.sitefooter {
+  padding: 18px 24px calc(18px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+}
+.sitefooter p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+.sitefooter a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.sitefooter a:hover { color: var(--text); text-decoration: underline; }
 
 /* ─── buttons ────────────────────────────────────────────── */
 .btn {
@@ -131,6 +159,7 @@ button { cursor: pointer; }
   max-width: 1480px;
   margin: 0 auto;
 }
+.board[hidden] { display: none; }
 
 /* ─── empty state ────────────────────────────────────────── */
 .empty {
@@ -138,6 +167,7 @@ button { cursor: pointer; }
   place-items: center;
   padding: 60px 22px;
 }
+.empty[hidden] { display: none; }
 .empty-card {
   max-width: 460px;
   text-align: center;
@@ -484,12 +514,21 @@ button { cursor: pointer; }
 
 /* ─── mobile lane layout ─────────────────────────────────── */
 @media (max-width: 640px) {
-  .topbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .topbar {
+    padding: calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 10px calc(12px + env(safe-area-inset-left, 0px));
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   .actions { flex-wrap: wrap; gap: 6px; }
   .actions .btn { padding: 7px 10px; font-size: 12px; }
   .brand .tag { display: none; }
+  .lab-link { display: none; }
 
-  .board { padding: 10px; gap: 8px; grid-template-columns: 1fr; }
+  .board {
+    padding: 10px calc(10px + env(safe-area-inset-right, 0px)) 10px calc(10px + env(safe-area-inset-left, 0px));
+    gap: 8px;
+    grid-template-columns: 1fr;
+  }
 
   /* The card becomes a slim row. Children of card-head, dial, controls and
      reps are unwrapped (display: contents) so we can grid-area them

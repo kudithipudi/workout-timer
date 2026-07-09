@@ -9,7 +9,7 @@ No build step. No framework. Three files. Open `index.html` in any modern browse
 ## Features
 
 - **Per-student timers** — every student tile runs its own independent countdown
-- **Rep-complete alert flow** — when a timer hits zero it (a) increments the rep count, (b) resets the timer to the full interval, (c) stops counting, and (d) starts a *continuous, repeating* chime in that student's tone. The card pulses with the student's accent color until the coach taps **Next rep**, which silences the chime and starts the next interval. This lets the coach pace each student manually instead of being chained to an auto-restart.
+- **Rep-complete alert flow** — when a timer hits zero it (a) increments the rep count, (b) resets the timer to the full interval, (c) stops counting, and (d) plays a short burst of chimes (5 chimes, ~5 seconds) in that student's tone. The card pulses with the student's accent color during the alert. The chime stops on its own; the coach then taps **Start** whenever the student is ready for the next rep. Tapping **Next rep** during the chime cuts it short and starts the next interval immediately. The countdown is meant to track the break between reps, so this lets the coach pace each student to taste.
 - **Distinct tones** — each student is auto-assigned a unique three-note WebAudio chime (different fundamentals + waveforms) so the trainer can identify *which* student finished without looking
 - **Distinct colors** — matching accent color per student (ring, glow, swatch, alert pulse) for instant visual ID
 - **Preset intervals** — one-tap chips for 20s, 30s, 45s, 1m, 1:30, 2m, 3m, 5m
@@ -88,7 +88,7 @@ A card has three mutually-exclusive states:
 | --- | --- | --- |
 | `false` | `false` | **idle** — paused at some remaining time |
 | `true`  | `false` | **running** — counting down |
-| `false` | `true`  | **alerting** — rep just finished, timer reset to full duration, chime looping until coach taps Next rep |
+| `false` | `true`  | **alerting** — rep just finished, timer reset to full duration, chime burst playing (~5s). Returns to idle automatically when the burst ends, or immediately if coach taps Next rep |
 
 ### Timer loop
 
@@ -96,16 +96,16 @@ A single `requestAnimationFrame` loop drives every running timer. Each frame:
 
 1. Compute `dt = now - lastTickAt` per running student
 2. Subtract from `remainingMs`
-3. If it crosses zero → `reps += 1`, reset `remainingMs` to full duration, flip `running → false` / `alerting → true`, start the continuous chime via `audio.startAlert(id, palette)`
+3. If it crosses zero → `reps += 1`, reset `remainingMs` to full duration, flip `running → false` / `alerting → true`, start the chime burst via `audio.startAlert(id, palette, onAutoStop)`
 4. Repaint just the affected card
 
-When nothing is running, the rAF loop is cancelled — zero CPU when idle. Alerts run on their own `setInterval`s (one per alerting student) and are torn down by `stopAlert(id)` on user acknowledgement.
+When nothing is running, the rAF loop is cancelled — zero CPU when idle. Alerts run on their own `setInterval`s (one per alerting student) and are torn down either by `stopAlert(id)` on coach acknowledgement, or by the burst's own auto-expiry after `ALERT_CHIMES` chimes — which fires the `onAutoStop` callback to flip the card back to idle.
 
 ### Audio
 
 `AudioContext` is created lazily on first user interaction. Each chime is a short 3-note arpeggio with an ADSR envelope, scheduled on the audio clock for tight timing. Eight tone profiles cycle through the palette — sine + triangle waveforms across pleasant musical intervals (C, A, G, F, D, B, Bb, Ab majors).
 
-For the rep-complete alert, the same arpeggio repeats every 950 ms until acknowledged. Multiple students can be alerting simultaneously; each ringer uses that student's distinct tone, so the coach can tell who's pending by ear.
+For the rep-complete alert, the same arpeggio repeats every 950 ms for `ALERT_CHIMES` rings (currently 5 — about 5 seconds total) and then stops on its own. Multiple students can be alerting simultaneously; each ringer uses that student's distinct tone, so the coach can tell who's pending by ear.
 
 ### Mobile lane layout
 
