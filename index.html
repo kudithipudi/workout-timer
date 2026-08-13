@@ -3,30 +3,34 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0c0f" />
-  <title>Cadence · Coach Timer</title>
+  <meta name="theme-color" content="#f8fafc" />
+  <title>Workout Timer · Coach Interval Timer</title>
   <link rel="icon" href="/favicon.ico" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <span class="dot" aria-hidden="true"></span>
-      <h1>Cadence</h1>
-      <span class="tag">coach timer</span>
-    </div>
-    <div class="actions">
-      <button id="startAll"  class="btn ghost" title="Start every paused timer">Start all</button>
-      <button id="pauseAll"  class="btn ghost" title="Pause every running timer">Pause all</button>
-      <button id="resetReps" class="btn ghost" title="Zero everyone's rep count">Reset reps</button>
-      <button id="muteBtn"   class="btn ghost icon" title="Mute / unmute tones" aria-pressed="false">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
-          <path class="mute-x" d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
-        </svg>
-      </button>
-      <button id="addBtn" class="btn primary">＋ Add student</button>
-      <a class="lab-link" href="https://lab.kudithipudi.org/" title="Back to lab.kudithipudi.org">← lab.kudithipudi.org</a>
+    <div class="topbar-inner">
+      <a href="index.html" class="brand">
+        <span class="brand-tile">W</span>
+        <span class="brand-text">
+          <span class="brand-name">Workout Timer</span>
+          <span class="brand-tagline">Coach interval timer</span>
+        </span>
+      </a>
+      <div class="actions">
+        <button id="startAll"  class="btn ghost" title="Start every paused timer">Start all</button>
+        <button id="pauseAll"  class="btn ghost" title="Pause every running timer">Pause all</button>
+        <button id="resetReps" class="btn ghost" title="Zero everyone's rep count">Reset reps</button>
+        <button id="muteBtn"   class="btn ghost icon" title="Mute / unmute tones" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+            <path class="mute-x" d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="addBtn" class="btn primary">＋ Add student</button>
+        <a class="lab-link" href="https://lab.kudithipudi.org/" title="Back to lab.kudithipudi.org"><span aria-hidden="true">←</span> lab.kudithipudi.org</a>
+      </div>
     </div>
   </header>
 
@@ -106,7 +110,9 @@
   </template>
 
   <footer class="sitefooter">
-    <p>Part of the <a href="https://lab.kudithipudi.org/">Kudithipudi AI Lab</a></p>
+    <div class="sitefooter-inner">
+      <p>Part of the <a href="https://lab.kudithipudi.org/">Kudithipudi AI Lab</a></p>
+    </div>
   </footer>
 
   <script src="app.js"></script>
