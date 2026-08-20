@@ -1,5 +1,6 @@
 /* ─── tokens ─────────────────────────────────────────────── */
 :root {
+  color-scheme: light;
   --bg:        #f8fafc;
   --bg-2:      #f1f5f9;
   --surface:   #ffffff;
@@ -21,6 +22,7 @@
 
 /* ─── base ───────────────────────────────────────────────── */
 * { box-sizing: border-box; }
+html { scroll-padding-top: 72px; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -37,6 +39,54 @@ body {
 
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
+button, a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── skip link & sr-only helpers ───────────────────────── */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link:focus {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  clip: auto;
+  clip-path: none;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ─── topbar (pretty-print chrome) ──────────────────────── */
 .topbar {
@@ -90,6 +140,7 @@ button { cursor: pointer; }
   min-width: 0;
 }
 .brand-name {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -225,6 +276,8 @@ button { cursor: pointer; }
 .card {
   --accent: #6366f1;
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
   background:
     linear-gradient(180deg, color-mix(in oklab, var(--accent) 6%, var(--surface)) 0%, var(--surface) 80%),
     var(--surface);
@@ -262,6 +315,7 @@ button { cursor: pointer; }
 }
 .swatch {
   width: 12px; height: 12px;
+  position: relative;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent), 0 0 10px color-mix(in oklab, var(--accent) 60%, transparent);
@@ -282,9 +336,14 @@ button { cursor: pointer; }
 }
 .name:hover  { background: var(--surface-2); }
 .name:focus  { background: var(--surface-2); border-color: var(--border-2); }
+.name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .iconbtn {
   appearance: none;
+  position: relative;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
@@ -296,6 +355,12 @@ button { cursor: pointer; }
   font-size: 16px;
   line-height: 1;
   transition: background .15s, color .15s, border-color .15s;
+}
+.iconbtn::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: inherit;
 }
 .iconbtn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-2); }
 .iconbtn.remove:hover { color: #ef4444; border-color: color-mix(in oklab, #ef4444 40%, var(--border)); }
@@ -384,11 +449,15 @@ button { cursor: pointer; }
   gap: 6px;
 }
 .custom-label {
+  display: contents;
   font-size: 12px;
   color: var(--muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.custom-label-text {
   padding-right: 4px;
+  white-space: nowrap;
 }
 .custom input {
   appearance: textfield;
@@ -402,11 +471,17 @@ button { cursor: pointer; }
   width: 100%;
   outline: none;
   text-align: center;
+  text-transform: none;
+  letter-spacing: normal;
   transition: border-color .15s, background .15s;
 }
 .custom input::-webkit-outer-spin-button,
 .custom input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .custom input:focus { border-color: var(--border-2); background: var(--surface); }
+.custom input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .custom .colon { color: var(--muted); font-weight: 600; }
 
 /* ── main controls ── */
@@ -459,10 +534,17 @@ button { cursor: pointer; }
 
 /* ── pulse on tick ── */
 @keyframes pulse {
-  0%   { box-shadow: 0 0 0 0    color-mix(in oklab, var(--accent) 55%, transparent); }
-  100% { box-shadow: 0 0 0 18px color-mix(in oklab, var(--accent) 0%,  transparent); }
+  0%   { transform: scale(1);   opacity: .6; }
+  100% { transform: scale(3.4); opacity: 0; }
 }
-.card.pulse .swatch { animation: pulse .6s ease-out; }
+.card.pulse .swatch::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--accent) 45%, transparent);
+  animation: pulse .6s ease-out;
+}
 
 /* ── rep flash ── */
 @keyframes flash {
@@ -474,21 +556,19 @@ button { cursor: pointer; }
 
 /* ── alerting (rep complete, awaiting coach) ── */
 @keyframes alertGlow {
-  0%, 100% {
-    box-shadow:
-      var(--shadow),
-      0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent),
-      0 0 26px -4px color-mix(in oklab, var(--accent) 55%, transparent);
-  }
-  50% {
-    box-shadow:
-      var(--shadow),
-      0 0 0 2px color-mix(in oklab, var(--accent) 75%, transparent),
-      0 0 60px  2px color-mix(in oklab, var(--accent) 70%, transparent);
-  }
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
 }
 .card.alerting {
   border-color: color-mix(in oklab, var(--accent) 65%, var(--border));
+}
+.card.alerting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--accent) 9%, transparent);
+  pointer-events: none;
   animation: alertGlow 1.05s ease-in-out infinite;
 }
 .card.alerting .time,
@@ -679,7 +759,7 @@ button { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.001ms !important;
+    animation: none !important;
     transition-duration: 0.001ms !important;
   }
 }

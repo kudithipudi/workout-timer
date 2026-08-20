@@ -155,6 +155,7 @@
 
   /* ─── DOM ──────────────────────────────────────────────── */
   const board    = document.getElementById("board");
+  const statusEl = document.getElementById("status");
   const empty    = document.getElementById("empty");
   const tpl      = document.getElementById("card-tpl");
   const addBtn   = document.getElementById("addBtn");
@@ -192,6 +193,7 @@
 
     // initial display
     const rt = runtime.get(s.id) || { remainingMs: s.duration * 1000, running: false, alerting: false, lastTickAt: 0 };
+    rt.node = node;
     runtime.set(s.id, rt);
     paint(node, s, rt);
     return node;
@@ -253,7 +255,7 @@
       rt.lastTickAt = now;
       rt.remainingMs -= dt;
 
-      const node = board.querySelector(`.card[data-id="${s.id}"]`);
+      const node = rt.node;
       if (rt.remainingMs <= 0) {
         // Rep complete: bump count, reset display, stop the timer, and play a
         // short burst of chimes. The alert stops on its own after a few
@@ -263,20 +265,20 @@
         rt.remainingMs = s.duration * 1000;
         rt.running     = false;
         rt.alerting    = true;
+        if (statusEl) statusEl.textContent = `${s.name}: rep ${s.reps} complete`;
         audio.startAlert(s.id, s.palette, () => {
           // Natural alert expiry: drop alerting state and repaint so the card
           // returns to a plain "paused at full duration" idle state.
           const rt2 = runtime.get(s.id);
           if (!rt2) return;
           rt2.alerting = false;
-          const n = board.querySelector(`.card[data-id="${s.id}"]`);
-          if (n) paint(n, s, rt2);
+          if (rt2.node) paint(rt2.node, s, rt2);
         });
         if (node) {
-          node.querySelector(".reps-value").textContent = s.reps;
-          node.querySelector(".reps-value").classList.remove("flash");
-          void node.offsetWidth;
-          node.querySelector(".reps-value").classList.add("flash");
+          const repsEl = node.querySelector(".reps-value");
+          repsEl.classList.remove("flash");
+          requestAnimationFrame(() => repsEl.classList.add("flash"));
+          repsEl.textContent = s.reps;
         }
         save();
       }
