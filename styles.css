@@ -306,8 +306,6 @@ button, a {
 .card {
   --accent: #6366f1;
   position: relative;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 340px;
   background:
     linear-gradient(180deg, color-mix(in oklab, var(--accent) 6%, var(--surface)) 0%, var(--surface) 80%),
     var(--surface);

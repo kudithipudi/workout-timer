@@ -317,7 +317,6 @@
     students.push(s);
     save();
     renderAll();
-    board.lastElementChild?.querySelector(".name")?.select();
   }
   /* removal is instant but undoable via toast */
   let lastRemoved = null; // { student, index }
