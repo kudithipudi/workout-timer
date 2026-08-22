@@ -11,6 +11,8 @@
   --muted:     #64748b;
   --muted-2:   #94a3b8;
   --accent:    #4f46e5;
+  --accent-hover: #6366f1;
+  --warn:      #d97706;
 
   --radius:    16px;
   --radius-sm: 10px;
@@ -18,6 +20,25 @@
 
   --font:      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono:      ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg:        #0b1220;
+    --bg-2:      #101a2e;
+    --surface:   #121c30;
+    --surface-2: #0d1526;
+    --border:    #243350;
+    --border-2:  #3b4d6e;
+    --text:      #e7edf8;
+    --muted:     #94a6c0;
+    --muted-2:   #64748b;
+    --accent:    #818cf8;
+    --accent-hover: #a5b4fc;
+    --warn:      #fbbf24;
+    --shadow:    0 1px 2px rgba(0,0,0,.45), 0 12px 32px -16px rgba(0,0,0,.65);
+  }
 }
 
 /* ─── base ───────────────────────────────────────────────── */
@@ -29,8 +50,8 @@ body {
   font-family: var(--font);
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 80% -10%, #eef2ff 0%, transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, #f1f5f9 0%, transparent 60%),
+    radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--accent) 7%, transparent) 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, var(--bg-2) 0%, transparent 60%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -93,7 +114,7 @@ button, a {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(255,255,255,.9);
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
   backdrop-filter: saturate(140%) blur(14px);
   -webkit-backdrop-filter: saturate(140%) blur(14px);
   border-bottom: 1px solid var(--border);
@@ -218,7 +239,7 @@ button, a {
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(15,23,42,.2);
 }
-.btn.primary:hover { background: #6366f1; }
+.btn.primary:hover { background: var(--accent-hover); }
 
 .btn.ghost   { background: transparent; }
 .btn.ghost:hover { background: var(--surface); }
@@ -231,6 +252,15 @@ button, a {
 #muteBtn .mute-x { opacity: 0; transition: opacity .15s ease; }
 #muteBtn[aria-pressed="true"] .mute-x { opacity: 1; }
 #muteBtn[aria-pressed="true"] { color: var(--muted); }
+
+/* consistent keyboard focus rings */
+.btn:focus-visible,
+.chip:focus-visible,
+.iconbtn:focus-visible,
+.expand-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ─── board ──────────────────────────────────────────────── */
 .board {
@@ -579,6 +609,20 @@ button, a {
   border-color: transparent;
 }
 
+/* ── final-seconds urgency (last 5s of a running rep) ────── */
+@keyframes urgentPulse {
+  0%, 100% { transform: scale(1);    }
+  50%      { transform: scale(1.05); }
+}
+.card.urgent .time,
+.card.urgent .state { color: var(--warn); }
+.card.urgent .time { animation: urgentPulse 1s ease-in-out infinite; transform-origin: center; }
+.card.urgent .ring-fill {
+  stroke: var(--warn);
+  filter: drop-shadow(0 0 8px color-mix(in oklab, var(--warn) 55%, transparent));
+}
+.card.urgent .bar-fill { background: var(--warn); }
+
 /* ── linear progress bar (mobile) ── */
 .bar {
   display: none;
@@ -594,7 +638,7 @@ button, a {
   background: var(--accent);
   border-radius: 999px;
   transform-origin: left center;
-  transition: width .25s linear;
+  transition: width .25s linear, background .3s ease;
   box-shadow: 0 0 10px -2px color-mix(in oklab, var(--accent) 60%, transparent);
 }
 
@@ -756,6 +800,35 @@ button, a {
 @media (min-width: 1100px) {
   .board { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
 }
+
+/* ─── toast (undo surface) ───────────────────────────────── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, calc(100% + 32px));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(92vw, 480px);
+  padding: 10px 12px 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px -10px rgba(15,23,42,.4), var(--shadow);
+  font-size: 13.5px;
+  opacity: 0;
+  visibility: hidden;
+  transition: transform .28s ease, opacity .22s ease, visibility 0s linear .28s;
+}
+.toast.show {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
+  transition: transform .28s ease, opacity .22s ease;
+}
+#toastUndo { flex: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -64,6 +64,21 @@
       if (this.muted || !this.ctx) return;
       this._playArpeggio(paletteIdx);
     },
+    /* short neutral blip for the final 3-2-1 countdown */
+    tick() {
+      if (this.muted || !this.ctx) return;
+      const now  = this.ctx.currentTime;
+      const osc  = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1000, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.09);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    },
     startAlert(id, paletteIdx, onAutoStop) {
       // Always tear down any existing alert on the same id, so calling
       // startAlert twice can't leak intervals.
@@ -108,6 +123,37 @@
   /** runtime maps from id → { remainingMs, running, lastTickAt } */
   const runtime = new Map();
   let rafId = null;
+
+  /* ─── wake lock (keep screen on while timers run) ──────── */
+  let wakeLock = null;
+  async function syncWakeLock() {
+    try {
+      const anyRunning = [...runtime.values()].some(rt => rt.running);
+      if (anyRunning && !wakeLock && navigator.wakeLock?.request) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } else if (!anyRunning && wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+      }
+    } catch { /* unsupported / denied / tab hidden — ignore */ }
+  }
+
+  /* ─── document title reflects board state ──────────────── */
+  const BASE_TITLE = document.title;
+  function updateTitle() {
+    let title = BASE_TITLE;
+    if ([...runtime.values()].some(rt => rt.alerting)) {
+      title = "Rep complete · Workout Timer";
+    } else {
+      let minMs = Infinity;
+      for (const rt of runtime.values()) {
+        if (rt.running && rt.remainingMs < minMs) minMs = rt.remainingMs;
+      }
+      if (minMs !== Infinity) title = `${fmt(minMs)} left · Workout Timer`;
+    }
+    if (document.title !== title) document.title = title;
+  }
 
   /* ─── persistence ──────────────────────────────────────── */
   function save() {
@@ -165,6 +211,34 @@
   const resetRp  = document.getElementById("resetReps");
   const muteBtn  = document.getElementById("muteBtn");
 
+  /* ─── toast (non-blocking undo surface) ────────────────── */
+  const toast     = document.getElementById("toast");
+  const toastMsg  = document.getElementById("toastMsg");
+  const toastUndo = document.getElementById("toastUndo");
+  let toastTimer = null;
+  let toastUndoFn = null;
+  function showToast(msg, onUndo) {
+    toastUndoFn = typeof onUndo === "function" ? onUndo : null;
+    toastMsg.textContent  = msg;
+    toastUndo.hidden      = !toastUndoFn;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 6000);
+  }
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toast.classList.remove("show");
+    toastUndoFn = null;
+  }
+  toastUndo?.addEventListener("click", () => {
+    const fn = toastUndoFn;
+    hideToast();
+    if (fn) fn();
+  });
+
+  /* per-card UI state that must survive rebuilds */
+  const expandedIds = new Set();
+
   function renderAll() {
     board.replaceChildren();
     if (students.length === 0) {
@@ -174,7 +248,14 @@
     }
     empty.hidden = true;
     board.hidden = false;
-    students.forEach(s => board.appendChild(buildCard(s)));
+    students.forEach(s => {
+      const node = buildCard(s);
+      if (expandedIds.has(s.id)) {
+        node.classList.add("expanded");
+        node.querySelector(".expand-toggle")?.setAttribute("aria-expanded", "true");
+      }
+      board.appendChild(node);
+    });
   }
 
   function buildCard(s) {
@@ -217,6 +298,10 @@
     if (bar) bar.style.width = `${frac * 100}%`;
     node.classList.toggle("running",  rt.running);
     node.classList.toggle("alerting", rt.alerting);
+    // final-seconds urgency: highlight the last stretch of a running rep
+    node.classList.toggle("urgent", Boolean(
+      rt.running && !rt.alerting && ms > 0 && ms <= 5000
+    ));
   }
 
   /* ─── student CRUD ─────────────────────────────────────── */
@@ -232,13 +317,36 @@
     students.push(s);
     save();
     renderAll();
+    board.lastElementChild?.querySelector(".name")?.select();
   }
+  /* removal is instant but undoable via toast */
+  let lastRemoved = null; // { student, index }
   function removeStudent(id) {
+    const index = students.findIndex(s => s.id === id);
+    if (index === -1) return;
+    const [student] = students.splice(index, 1);
     audio.stopAlert(id);
-    students = students.filter(s => s.id !== id);
     runtime.delete(id);
     save();
     renderAll();
+    updateTitle();
+    lastRemoved = { student, index };
+    showToast(`Removed ${student.name}`, () => {
+      if (!lastRemoved || lastRemoved.student.id !== student.id) return;
+      const { student: s2, index: i } = lastRemoved;
+      lastRemoved = null;
+      students.splice(Math.min(i, students.length), 0, s2);
+      runtime.set(s2.id, {
+        remainingMs: s2.duration * 1000,
+        running: false,
+        alerting: false,
+        lastTickAt: 0,
+      });
+      save();
+      renderAll();
+      if (statusEl) statusEl.textContent = `${s2.name} restored`;
+    });
+    if (statusEl) statusEl.textContent = `${student.name} removed`;
   }
 
   /* ─── timer loop ───────────────────────────────────────── */
@@ -254,6 +362,13 @@
       const dt = now - rt.lastTickAt;
       rt.lastTickAt = now;
       rt.remainingMs -= dt;
+
+      // 3-2-1 countdown blips (once per whole-second boundary)
+      const sec = Math.ceil(Math.max(0, rt.remainingMs) / 1000);
+      if (sec !== rt.lastWholeSec) {
+        if (sec >= 1 && sec <= 3) audio.tick();
+        rt.lastWholeSec = sec;
+      }
 
       const node = rt.node;
       if (rt.remainingMs <= 0) {
@@ -289,7 +404,9 @@
       rafId = requestAnimationFrame(tick);
     } else {
       rafId = null;
+      syncWakeLock();
     }
+    updateTitle();
   }
   function ensureLoop() {
     if (rafId == null) {
@@ -297,6 +414,7 @@
       const now = performance.now();
       for (const rt of runtime.values()) if (rt.running) rt.lastTickAt = now;
       rafId = requestAnimationFrame(tick);
+      syncWakeLock();
     }
   }
 
@@ -346,6 +464,7 @@
     rt.remainingMs = s.duration * 1000;
     const node = board.querySelector(`.card[data-id="${id}"]`);
     if (node) paint(node, s, rt);
+    updateTitle();
   }
   function bumpReps(id, delta) {
     const s = students.find(x => x.id === id); if (!s) return;
@@ -371,15 +490,28 @@
       const next = !card.classList.contains("expanded");
       card.classList.toggle("expanded", next);
       expandBtn.setAttribute("aria-expanded", String(next));
+      if (next) expandedIds.add(id); else expandedIds.delete(id);
       return;
     }
     if (e.target.matches(".chip"))         setDuration(id, Number(e.target.dataset.sec));
     else if (e.target.matches(".play"))    toggle(id);
     else if (e.target.matches(".reset"))   resetTimer(id);
-    else if (e.target.matches(".remove"))  { if (confirm("Remove this student?")) removeStudent(id); }
+    else if (e.target.matches(".remove"))  removeStudent(id);
     else if (e.target.matches(".rep-inc")) bumpReps(id, +1);
     else if (e.target.matches(".rep-dec")) bumpReps(id, -1);
     else if (e.target.matches(".rep-zero")) zeroReps(id);
+  });
+  /* live-persist name edits without waiting for blur */
+  let nameSaveTimer = null;
+  board.addEventListener("input", (e) => {
+    if (!e.target.matches(".name")) return;
+    const s = students.find(x => x.id === e.target.closest(".card").dataset.id);
+    if (!s) return;
+    const v = e.target.value;
+    // keep the model on the last non-empty value so blur can still revert
+    if (v.trim()) s.name = v;
+    clearTimeout(nameSaveTimer);
+    nameSaveTimer = setTimeout(save, 400);
   });
   board.addEventListener("change", (e) => {
     if (!e.target.matches(".name")) return;
@@ -442,15 +574,29 @@
 
   resetRp.addEventListener("click", () => {
     if (students.length === 0) return;
-    if (!confirm("Zero everyone's rep count?")) return;
+    const snapshot = students.map(s => ({ id: s.id, reps: s.reps }));
     students.forEach(s => { s.reps = 0; });
     save();
     document.querySelectorAll(".reps-value").forEach(el => el.textContent = "0");
+    if (statusEl) statusEl.textContent = "All rep counts zeroed";
+    const n = snapshot.length;
+    showToast(`Zeroed reps for ${n} ${n === 1 ? "student" : "students"}`, () => {
+      students.forEach(s => {
+        const prev = snapshot.find(x => x.id === s.id);
+        if (!prev) return;
+        s.reps = prev.reps;
+        const el = board.querySelector(`.card[data-id="${s.id}"] .reps-value`);
+        if (el) el.textContent = s.reps;
+      });
+      save();
+      if (statusEl) statusEl.textContent = "Rep counts restored";
+    });
   });
 
   muteBtn.addEventListener("click", () => {
     audio.muted = !audio.muted;
     muteBtn.setAttribute("aria-pressed", String(audio.muted));
+    muteBtn.title = audio.muted ? "Unmute tones" : "Mute tones";
     if (audio.muted) audio.stopAllAlerts(); // silence room immediately
     save();
   });
@@ -459,12 +605,16 @@
   // Keep timers honest when the tab is hidden: setInterval+rAF both get throttled,
   // but we recompute dt from performance.now() so the next paint corrects itself.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) ensureLoop();
+    if (!document.hidden) {
+      ensureLoop();
+      syncWakeLock(); // browser drops the lock while hidden — reacquire
+    }
   });
 
   /* ─── boot ─────────────────────────────────────────────── */
   load();
   // any persisted muted state → reflect on the button
   muteBtn.setAttribute("aria-pressed", String(audio.muted));
+  muteBtn.title = audio.muted ? "Unmute tones" : "Mute tones";
   renderAll();
 })();
